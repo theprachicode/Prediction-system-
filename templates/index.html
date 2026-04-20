@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeuroPathyRx | Clinical Diagnostic Portal</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #f8fafc;
+            --card: #ffffff;
+            --accent: #2563eb;
+            --success: #16a34a;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --border: #e2e8f0;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text-main);
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            padding: 40px 20px;
+        }
+
+        .container { max-width: 900px; width: 100%; }
+
+        .card {
+            background: var(--card);
+            padding: 40px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Smart Scan Section */
+        .smart-scan-box {
+            background: #eff6ff;
+            border: 2px dashed #bfdbfe;
+            padding: 24px;
+            border-radius: 8px;
+            margin-bottom: 32px;
+            text-align: center;
+        }
+
+        .section-header {
+            font-size: 0.875rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--accent);
+            margin: 32px 0 16px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #f1f5f9;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 24px;
+        }
+
+        .field-group { display: flex; flex-direction: column; gap: 8px; }
+
+        label { font-size: 0.875rem; font-weight: 500; }
+
+        input, select {
+            border: 1px solid var(--border);
+            padding: 10px 14px;
+            border-radius: 6px;
+            font-size: 1rem;
+            background: white;
+        }
+
+        /* Highlight for Auto-filled fields */
+        .auto-filled {
+            background-color: #f0fdf4 !important;
+            border-color: var(--success) !important;
+            transition: all 0.5s ease;
+        }
+
+        .submit-btn {
+            width: 100%;
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 16px;
+            border-radius: 6px;
+            font-weight: 700;
+            font-size: 1.1rem;
+            cursor: pointer;
+            margin-top: 40px;
+        }
+
+        .submit-btn:hover { background: #1d4ed8; }
+
+        .hidden { display: none; }
+        
+        #result-panel {
+            margin-top: 24px;
+            padding: 30px;
+            background: #f0fdf4;
+            border: 2px solid #bcf0da;
+            border-radius: 12px;
+            text-align: center;
+        }
+
+        .risk-value {
+            font-size: 2rem;
+            font-weight: 800;
+            color: var(--accent);
+            display: block;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header style="text-align: center; margin-bottom: 30px;">
+        <h1 style="font-size: 2.5rem; margin: 0;">NeuroPathy<span style="color:var(--accent)">Rx</span></h1>
+        <p style="color: var(--text-muted)">Intelligent Neuropathy Risk Assessment</p>
+    </header>
+
+    <main class="card">
+        <div class="smart-scan-box">
+            <label for="report-file" style="cursor:pointer; color: var(--accent); font-weight: 700; font-size: 1.1rem;">
+                [+] UPLOAD MEDICAL REPORT (PDF)
+            </label>
+            <input type="file" id="report-file" accept=".pdf" style="display:none">
+            <p style="margin: 10px 0 0; font-size: 0.85rem; color: var(--text-muted)">
+                Our AI will extract all possible data. Remaining fields can be filled manually.
+            </p>
+        </div>
+
+        <form id="predict-form">
+            <div class="section-header">01 Demographics</div>
+            <div class="grid">
+                <div class="field-group">
+                    <label>Age (Years)</label>
+                    <input type="number" id="age" name="age" required>
+                </div>
+                <div class="field-group">
+                    <label>Gender</label>
+                    <select id="gender" name="gender" required>
+                        <option value="">Select...</option>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                    </select>
+                </div>
+                <div class="field-group">
+                    <label>Weight (kg)</label>
+                    <input type="number" id="weight" step="0.1" oninput="calculateBMI()" placeholder="e.g. 72">
+                </div>
+                <div class="field-group">
+                    <label>Height (cm)</label>
+                    <input type="number" id="height" step="1" oninput="calculateBMI()" placeholder="e.g. 175">
+                </div>
+                <div class="field-group">
+                    <label>Calculated BMI</label>
+                    <input type="number" id="bmi" name="bmi" step="0.1" readonly style="background: #f8fafc; font-weight: bold;">
+                </div>
+            </div>
+
+            <div class="section-header">02 Clinical Data</div>
+            <div class="grid">
+                <div class="field-group">
+                    <label>HbA1c Level (%)</label>
+                    <input type="number" id="hba1c" name="hba1c" step="0.1" required>
+                </div>
+                <div class="field-group">
+                    <label>Diabetes Duration (Years)</label>
+                    <input type="number" id="diabetes_duration" name="diabetes_duration" required>
+                </div>
+                <div class="field-group">
+                    <label>Diabetes Type</label>
+                    <select id="diabetes_type" name="diabetes_type" required>
+                        <option value="Type 2">Type 2</option>
+                        <option value="Type 1">Type 1</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="section-header">03 Lifestyle & Symptoms</div>
+            <div class="grid">
+                <div class="field-group">
+                    <label>Smoking Status</label>
+                    <select id="smoking_status" name="smoking_status" required>
+                        <option value="Never">Never</option>
+                        <option value="Former">Former</option>
+                        <option value="Current">Current</option>
+                    </select>
+                </div>
+                <div class="field-group">
+                    <label>Alcohol Status</label>
+                    <select id="alcohol_status" name="alcohol_status" required>
+                        <option value="Never">Never</option>
+                        <option value="Occasional">Occasional</option>
+                        <option value="Regular">Regular</option>
+                    </select>
+                </div>
+                <div class="field-group">
+                    <label>Tingling/Numbness</label>
+                    <select id="tingling" name="tingling" required>
+                        <option value="No">No</option>
+                        <option value="Yes">Yes</option>
+                    </select>
+                </div>
+                <div class="field-group">
+                    <label>Burning Pain</label>
+                    <select id="burning_pain" name="burning_pain" required>
+                        <option value="No">No</option>
+                        <option value="Yes">Yes</option>
+                    </select>
+                </div>
+                <div class="field-group">
+                    <label>History of Foot Ulcer</label>
+                    <select id="foot_ulcer" name="foot_ulcer" required>
+                        <option value="No">No</option>
+                        <option value="Yes">Yes</option>
+                    </select>
+                </div>
+            </div>
+
+            <button type="submit" class="submit-btn">GENERATE RISK ASSESSMENT</button>
+        </form>
+
+        <div id="result-panel" class="hidden">
+            <h3 style="margin:0; color: #166534; text-transform: uppercase; font-size: 0.9rem;">Diagnostic Result</h3>
+            <span id="risk-badge" class="risk-value">--</span>
+            <button onclick="window.location.reload()" style="background:none; border:none; color:var(--accent); cursor:pointer; margin-top:20px; text-decoration: underline; font-weight: 600;">NEW ASSESSMENT</button>
+        </div>
+    </main>
+</div>
+
+<script>
+    // 1. Automatic BMI Calculation
+    function calculateBMI() {
+        const weight = parseFloat(document.getElementById('weight').value);
+        const heightCm = parseFloat(document.getElementById('height').value);
+        const bmiField = document.getElementById('bmi');
+
+        if (weight > 0 && heightCm > 0) {
+            const heightM = heightCm / 100;
+            const bmi = (weight / (heightM * heightM)).toFixed(1);
+            bmiField.value = bmi;
+        }
+    }
+
+    // 2. Greedy Extraction Handler
+    document.getElementById('report-file').addEventListener('change', async function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const formData = new FormData();
+        formData.append('report', file);
+
+        try {
+            const res = await fetch('/extract', { method: 'POST', body: formData });
+            const result = await res.json();
+
+            if (result.success) {
+                // This greedy loop maps any key found in Python to the HTML ID
+                Object.keys(result.data).forEach(key => {
+                    const el = document.getElementById(key);
+                    if (el) {
+                        el.value = result.data[key];
+                        el.classList.add('auto-filled');
+                    }
+                });
+                alert("Smart Scan Complete! Please verify the green-highlighted fields.");
+            }
+        } catch (err) {
+            alert("Error scanning PDF. Please fill the data manually.");
+        }
+    });
+
+    // 3. Prediction Submission
+    document.getElementById('predict-form').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        const data = Object.fromEntries(formData.entries());
+
+        const res = await fetch('/predict', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        
+        const result = await res.json();
+        if (result.success) {
+            document.getElementById('predict-form').style.display = 'none';
+            document.getElementById('result-panel').classList.remove('hidden');
+            document.getElementById('risk-badge').innerText = result.prediction;
+            
+            // Color coding logic
+            const badge = document.getElementById('risk-badge');
+            if (result.prediction.toLowerCase().includes('high')) badge.style.color = "#dc2626";
+            else if (result.prediction.toLowerCase().includes('medium')) badge.style.color = "#d97706";
+            else badge.style.color = "#16a34a";
+        }
+    });
+</script>
+
+</body>
+</html>
