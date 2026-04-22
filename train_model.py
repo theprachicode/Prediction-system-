@@ -11,7 +11,7 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import classification_report, accuracy_score
 
 print("Loading dataset...")
-df = pd.read_csv("Dibaties_exact_data_-_Copy.csv")
+df = pd.read_csv("data/diabetes_data.csv")
 df.drop(columns=["Patient_ID"], inplace=True)
 
 # ── Standardise all categorical values ───────────────────────
@@ -61,7 +61,8 @@ y_pred = model.predict(X_test)
 print(f"\n✅ Accuracy: {accuracy_score(y_test, y_pred)*100:.2f}%")
 print(classification_report(y_test, y_pred, target_names=target_encoder.classes_))
 
-with open("model.pkl", "wb") as f:
+os.makedirs("models", exist_ok=True)
+with open("models/model.pkl", "wb") as f:
     pickle.dump({"model": model, "encoders": encoders, "feature_cols": FEATURE_COLS}, f)
 
-print("✅ model.pkl saved!")
+print("✅ models/model.pkl saved!")
