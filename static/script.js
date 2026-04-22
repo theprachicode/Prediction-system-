@@ -1,159 +1,193 @@
-// ============================================================
-// static/script.js – Form handling & prediction display
-// ============================================================
+// static/script.js
+document.addEventListener('DOMContentLoaded', () => {
 
-// ── Element references ──────────────────────────────────────
-const form         = document.getElementById("predict-form");
-const submitBtn    = document.getElementById("submit-btn");
-const resetBtn     = document.getElementById("reset-btn");
-
-const resultPanel  = document.getElementById("result-panel");
-const loadingState = document.getElementById("loading-state");
-const errorState   = document.getElementById("error-state");
-const successState = document.getElementById("success-state");
-const errorMsg     = document.getElementById("error-message");
-
-const riskBadge    = document.getElementById("risk-badge");
-
-// Probability bar elements
-const bars = {
-    Low:      { row: document.getElementById("bar-low"),      fill: document.querySelector(".low-fill") },
-    Moderate: { row: document.getElementById("bar-moderate"), fill: document.querySelector(".mod-fill") },
-    High:     { row: document.getElementById("bar-high"),     fill: document.querySelector(".high-fill") },
-};
-
-// ── Helpers ──────────────────────────────────────────────────
-
-function showState(name) {
-    if (!resultPanel) return;
-    resultPanel.classList.remove("hidden");
-    [loadingState, errorState, successState].forEach(el => el?.classList.add("hidden"));
-    
-    if (name === "loading") loadingState?.classList.remove("hidden");
-    if (name === "error")   errorState?.classList.remove("hidden");
-    if (name === "success") successState?.classList.remove("hidden");
-}
-
-function clearValidation() {
-    form.querySelectorAll(".field-group").forEach(g => g.classList.remove("has-error"));
-    form.querySelectorAll("input, select").forEach(el => el.classList.remove("invalid"));
-}
-
-/** Collect form values into a plain object */
-function collectFormData() {
-    const data = {};
-    const fields = [
-        "age", "gender", "bmi", "smoking_status", "alcohol_status", 
-        "diabetes_type", "diabetes_duration", "hba1c", "tingling", 
-        "burning_pain", "foot_ulcer"
-    ];
-    
-    fields.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) data[id] = el.value;
-    });
-    return data;
-}
-
-/** Animate probability bars */
-function animateBars(probabilities) {
-    // 🔍 Step 1: Find highest probability
-    let maxLabel = null;
-    let maxValue = -1;
-
-    Object.entries(probabilities).forEach(([label, data]) => {
-        const percentage = (typeof data === 'object') 
-            ? data.percentage 
-            : data;
-
-        if (percentage > maxValue) {
-            maxValue = percentage;
-            maxLabel = label;
-        }
-    });
-
-    // 🧹 Step 2: Hide all bars
-    Object.values(bars).forEach(bar => {
-        if (bar.row) bar.row.style.display = "none";
-    });
-
-    // ✅ Step 3: Show only highest probability
-    if (bars[maxLabel]) {
-        const fill = bars[maxLabel].fill;
-        const pctLabel = bars[maxLabel].row.querySelector(".bar-pct");
-
-        bars[maxLabel].row.style.display = "flex";
-
-        if (fill) fill.style.width = maxValue + "%";
-        if (pctLabel) pctLabel.textContent = Math.round(maxValue) + "%";
+    // Contact Form Prevent Default
+    const contactForm = document.getElementById('contact-form');
+    if(contactForm) {
+        contactForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            alert("Thank you for reaching out. We will get back to you shortly.");
+            contactForm.reset();
+        });
     }
-}
 
-/** Display prediction result */
-function displayResult(data) {
-    const label = data.prediction; // "Low" | "Moderate" | "High"
+    // Prediction & Extraction Logic
+    const extractBtn = document.getElementById('extract-btn');
+    const predictForm = document.getElementById('prediction-form');
 
-    riskBadge.textContent = label;
-    riskBadge.className   = "risk-badge risk-" + label.toLowerCase();
+    // 1. PDF Extraction
+    if (extractBtn) {
+        extractBtn.addEventListener('click', async () => {
+            const fileInput = document.getElementById('pdfFile');
+            const errorDiv = document.getElementById('extract-error');
+            const successDiv = document.getElementById('extract-success');
+            const spinner = document.getElementById('extract-spinner');
 
-    animateBars(data.probabilities);
-    showState("success");
+            errorDiv.classList.add('d-none');
+            successDiv.classList.add('d-none');
 
-    resultPanel.scrollIntoView({ behavior: "smooth", block: "start" });
-}
+            if (!fileInput.files.length) {
+                errorDiv.textContent = "Please select a PDF file first.";
+                errorDiv.classList.remove('d-none');
+                return;
+            }
 
-// ── Form submit ───────────────────────────────────────────────
-if (form) {
-    form.addEventListener("submit", async (e) => {
-        e.preventDefault(); // CRITICAL: Prevents page refresh
-        e.stopPropagation();
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
 
-        clearValidation();
-        const formData = collectFormData();
+            extractBtn.disabled = true;
+            spinner.classList.remove('d-none');
 
-        // UI Feedback
-        if (submitBtn) {
-            submitBtn.disabled = true;
-            const btnText = submitBtn.querySelector(".btn-text");
-            if (btnText) btnText.textContent = "Assessing...";
-        }
-        showState("loading");
+            try {
+                // Call Flask /extract endpoint
+                const response = await fetch('/extract', {
+                    method: 'POST',
+                    body: formData
+                });
 
-        try {
-            const response = await fetch("/predict", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(formData),
+                if (!response.ok) throw new Error("Failed to extract data.");
+
+                const data = await response.json();
+                
+                // Auto-fill form fields assuming JSON keys match
+                if(data.age) document.getElementById('age').value = data.age;
+                if(data.gender) document.getElementById('gender').value = data.gender;
+                if(data.bmi) document.getElementById('bmi').value = data.bmi;
+                if(data.diabetesType) document.getElementById('diabetesType').value = data.diabetesType;
+                if(data.duration) document.getElementById('duration').value = data.duration;
+                if(data.hba1c) document.getElementById('hba1c').value = data.hba1c;
+                
+                // Handle radio buttons
+                if(data.smoking) {
+                    if(data.smoking === 'Yes') document.getElementById('smokeYes').checked = true;
+                    else if(data.smoking === 'No') document.getElementById('smokeNo').checked = true;
+                }
+                if(data.alcohol) {
+                    if(data.alcohol === 'Yes') document.getElementById('alcYes').checked = true;
+                    else if(data.alcohol === 'No') document.getElementById('alcNo').checked = true;
+                }
+
+                // Handle symptoms
+                if(data.symptoms && Array.isArray(data.symptoms)) {
+                    document.querySelectorAll('.symptom-cb').forEach(cb => {
+                        if(data.symptoms.includes(cb.value)) cb.checked = true;
+                    });
+                }
+
+                successDiv.classList.remove('d-none');
+            } catch (err) {
+                errorDiv.textContent = err.message || "An error occurred during extraction.";
+                errorDiv.classList.remove('d-none');
+            } finally {
+                extractBtn.disabled = false;
+                spinner.classList.add('d-none');
+            }
+        });
+    }
+
+    // 2. Prediction Submit
+    if (predictForm) {
+        predictForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const submitBtn = document.getElementById('predict-btn');
+            const spinner = document.getElementById('predict-spinner');
+            const errorDiv = document.getElementById('predict-error');
+            const resultSection = document.getElementById('result-section');
+            const resultCard = document.getElementById('result-card');
+            
+            errorDiv.classList.add('d-none');
+            resultSection.classList.add('d-none');
+
+            // Gather Symptoms
+            const symptoms = [];
+            document.querySelectorAll('.symptom-cb:checked').forEach(cb => {
+                symptoms.push(cb.value);
             });
 
-            const result = await response.json();
+            // Gather Payload
+            const payload = {
+                age: document.getElementById('age').value,
+                gender: document.getElementById('gender').value,
+                bmi: document.getElementById('bmi').value,
+                diabetesType: document.getElementById('diabetesType').value,
+                duration: document.getElementById('duration').value,
+                hba1c: document.getElementById('hba1c').value,
+                smoking: document.querySelector('input[name="smoking"]:checked')?.value,
+                alcohol: document.querySelector('input[name="alcohol"]:checked')?.value,
+                symptoms: symptoms
+            };
 
-            if (!response.ok || !result.success) {
-                throw new Error(result.error || "Prediction failed.");
-            }
+            submitBtn.disabled = true;
+            spinner.classList.remove('d-none');
 
-            displayResult(result);
+            try {
+                // Call Flask /predict endpoint
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
 
-        } catch (err) {
-            console.error(err);
-            if (errorMsg) errorMsg.textContent = err.message;
-            showState("error");
-        } finally {
-            if (submitBtn) {
+                if (!response.ok) throw new Error("Prediction API failed.");
+
+                const data = await response.json();
+                const risk = data.prediction || "Low"; // Expecting "Low", "Medium", "High"
+
+                displayResults(risk);
+                
+                resultSection.classList.remove('d-none');
+                
+                // Scroll to result
+                resultSection.scrollIntoView({ behavior: 'smooth' });
+
+            } catch (err) {
+                errorDiv.textContent = err.message || "Could not connect to the prediction server.";
+                errorDiv.classList.remove('d-none');
+            } finally {
                 submitBtn.disabled = false;
-                const btnText = submitBtn.querySelector(".btn-text");
-                if (btnText) btnText.textContent = "Assess Risk";
+                spinner.classList.add('d-none');
             }
-        }
-    });
-}
+        });
+    }
 
-// ── Reset button ──────────────────────────────────────────────
-if (resetBtn) {
-    resetBtn.addEventListener("click", () => {
-        resultPanel.classList.add("hidden");
-        clearValidation();
-        form.reset();
-        window.scrollTo({ top: 0, behavior: "smooth" });
-    });
-}
+    // Render logic for recommendations based on Risk Level
+    function displayResults(riskLevel) {
+        const badge = document.getElementById('risk-badge');
+        const diet = document.getElementById('rec-diet');
+        const lifestyle = document.getElementById('rec-lifestyle');
+        const medical = document.getElementById('rec-medical');
+        const card = document.getElementById('result-card');
+
+        // Reset classes
+        badge.className = 'result-badge d-inline-block px-5 py-3 rounded-pill text-white fw-bold h3 mb-4 shadow';
+        card.className = 'card shadow border-0 border-top border-5';
+
+        badge.textContent = `${riskLevel} Risk`;
+
+        if (riskLevel.toLowerCase() === 'high') {
+            badge.classList.add('badge-high');
+            card.classList.add('border-danger');
+            
+            diet.innerHTML = "<strong>Strict Diabetic Diet:</strong> Severely restrict simple carbohydrates. High protein, high fiber. Avoid processed foods entirely.";
+            lifestyle.innerHTML = "<strong>Cautious Activity:</strong> Avoid weight-bearing exercises if foot ulcers are present. Focus on upper body or swimming. Daily strict foot inspection required.";
+            medical.innerHTML = "<strong>Immediate Consultation:</strong> Schedule an appointment with a neurologist and podiatrist immediately. Adjust medication for pain management and strict glycemic control.";
+        } 
+        else if (riskLevel.toLowerCase() === 'medium') {
+            badge.classList.add('badge-medium');
+            card.classList.add('border-warning');
+            
+            diet.innerHTML = "<strong>Controlled Diet:</strong> Monitor carbohydrate intake closely. Increase omega-3 fatty acids and antioxidants to support nerve health.";
+            lifestyle.innerHTML = "<strong>Moderate Exercise:</strong> 30 mins of daily walking with proper orthotic footwear. Check feet every night before bed.";
+            medical.innerHTML = "<strong>Follow-up Required:</strong> Discuss these results at your next endocrinologist visit. Consider comprehensive foot exam to establish a baseline.";
+        } 
+        else {
+            badge.classList.add('badge-low');
+            card.classList.add('border-success');
+            
+            diet.innerHTML = "<strong>Balanced Diet:</strong> Maintain a standard balanced diabetic diet. Stay hydrated to ensure good blood circulation.";
+            lifestyle.innerHTML = "<strong>Active Lifestyle:</strong> Maintain regular exercise routines. Keep BMI within normal range. Basic foot hygiene is sufficient.";
+            medical.innerHTML = "<strong>Routine Care:</strong> Continue with annual checkups and routine HbA1c monitoring. Keep blood sugars well within target range.";
+        }
+    }
+});
