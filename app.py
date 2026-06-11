@@ -8,12 +8,14 @@ from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 
-# Configuration
+# Configuration for temporary PDF uploads
 UPLOAD_FOLDER = 'uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
+# ---------------------------------------------------------
 # 1. Load the trained Machine Learning Model and Encoders
+# ---------------------------------------------------------
 try:
     with open("model.pkl", "rb") as f:
         bundle = pickle.load(f)
@@ -23,24 +25,25 @@ try:
 except FileNotFoundError:
     print("Error: model.pkl not found. Please ensure it is in the same directory.")
 
+# ---------------------------------------------------------
+# 2. Advanced PDF Extraction Engine
+# ---------------------------------------------------------
 def scan_clinical_report(text, expected_name):
     """
-    Advanced Extraction Engine:
-    Checks for the patient name first. Uses broader regex to catch age, 
-    gender, HbA1c, diabetes history, and symptoms.
+    Advanced Extraction Engine with Auto-Inference and Month-to-Year Conversion.
     """
-    # 1. Verification Security Check
-    if expected_name and expected_name.lower() not in text.lower():
-        # This error is sent back to the frontend and displayed as an alert
-        raise ValueError(f"Security Alert: The name '{expected_name}' was not found in the uploaded report. Extraction aborted.")
+    # 1. Verification Security Check (Case Insensitive)
+    if expected_name and expected_name.strip().lower() not in text.lower():
+        raise ValueError("Please ensure the name entered exactly matches the name on the PDF document.")
 
     extracted = {}
+    age_val = None
 
     # --- Demographics ---
-    # Catches formats like "Age: 45", "Age/Gender: 45 Y", "45 Y / M"
     age_match = re.search(r"(?:Age|Age/Gender)\s*[:-]?\s*(\d+)", text, re.IGNORECASE)
     if age_match:
-        extracted['age'] = age_match.group(1)
+        age_val = int(age_match.group(1))
+        extracted['age'] = str(age_val)
 
     if re.search(r"(?:Sex|Gender|Age/Gender).*?\b(Male|M)\b", text, re.IGNORECASE):
         extracted['gender'] = "Male"
@@ -48,20 +51,29 @@ def scan_clinical_report(text, expected_name):
         extracted['gender'] = "Female"
 
     # --- Laboratory Results ---
-    # Catches "HbA1c", "Glycosylated Hemoglobin", etc.
     hba1c_match = re.search(r"(?:HbA1c|Glycosylated Hemoglobin|Glycated Haemoglobin).*?(\d+\.\d+)", text, re.IGNORECASE | re.DOTALL)
     if hba1c_match:
         extracted['hba1c'] = hba1c_match.group(1)
 
-    # --- Clinical History ---
-    duration_match = re.search(r"(?:history of|duration of|known case of).*?(\d+)\s*(?:years?|yrs?)", text, re.IGNORECASE)
+    # --- Clinical History (Handles Months & Years) ---
+    duration_match = re.search(r"(?:history of|duration of|known case of).*?(\d+)\s*(months?|yrs?|years?)", text, re.IGNORECASE)
     if duration_match:
-        extracted['diabetes_duration'] = duration_match.group(1)
+        val = float(duration_match.group(1))
+        unit = duration_match.group(2).lower()
+        if 'month' in unit:
+            val = round(val / 12.0, 2) # Convert months to years (e.g., 6 months -> 0.5 years)
+        extracted['diabetes_duration'] = str(val)
+        extracted['duration_unit'] = "years" # Force dropdown to match decimal
 
+    # --- Type Inference ---
     if re.search(r"\b(?:Type 1|Type I|T1DM)\b", text, re.IGNORECASE):
         extracted['diabetes_type'] = "Type 1"
     elif re.search(r"\b(?:Type 2|Type II|T2DM)\b", text, re.IGNORECASE):
         extracted['diabetes_type'] = "Type 2"
+    else:
+        # Intelligent fallback: Infer Type by Age if not explicitly stated
+        if age_val is not None:
+            extracted['diabetes_type'] = "Type 1" if age_val < 30 else "Type 2"
 
     # --- Symptoms ---
     if re.search(r"\b(?:Tingling|Numbness|Paresthesia)\b", text, re.IGNORECASE):
@@ -73,8 +85,9 @@ def scan_clinical_report(text, expected_name):
 
     return extracted
 
-
-# --- Frontend Routes ---
+# ---------------------------------------------------------
+# 3. Frontend Page Routes
+# ---------------------------------------------------------
 @app.route('/')
 @app.route('/index.html')
 def home():
@@ -108,15 +121,16 @@ def prediction_page():
 def contact():
     return render_template('contact.html')
 
+# ---------------------------------------------------------
+# 4. API Endpoints (Extraction, Prediction, Contact)
+# ---------------------------------------------------------
 
-# --- API Routes ---
 @app.route("/extract", methods=["POST"])
 def extract_report():
     if 'report' not in request.files:
         return jsonify({"success": False, "error": "No file uploaded"})
     
     file = request.files['report']
-    # Grab the patient name sent from the new Javascript
     patient_name = request.form.get('patient_name', '') 
     
     filename = secure_filename(file.filename)
@@ -132,21 +146,29 @@ def extract_report():
         return jsonify({"success": True, "data": extracted_data})
     
     except ValueError as ve:
-        # Catches the Name mismatch error specifically
+        # Catches the specific Name Mismatch error
         return jsonify({"success": False, "error": str(ve)})
     except Exception as e:
         return jsonify({"success": False, "error": "Failed to read PDF structure."})
     
     finally:
+        # Always delete the uploaded file after processing to maintain security/statelessness
         if os.path.exists(filepath):
             os.remove(filepath)
-
 
 @app.route("/predict", methods=["POST"])
 def predict_api():
     try:
         data = request.json
         
+        # --- NEW: Convert Months to Years if user selected "Months" ---
+        duration_val = float(data.get("diabetes_duration", 0))
+        duration_unit = data.get("duration_unit", "years")
+        if duration_unit == "months":
+            final_duration = round(duration_val / 12.0, 2)
+        else:
+            final_duration = duration_val
+
         # Mapping exact HTML 'name' attributes to Model Feature Names
         mapping = {
             "age": "Age", 
@@ -155,7 +177,6 @@ def predict_api():
             "smoking_status": "Smoking_Status", 
             "alcohol_status": "Alcohol_Status",
             "diabetes_type": "Diabetes_Type", 
-            "diabetes_duration": "Diabetes_Duration_Years",
             "hba1c": "HbA1c_Level", 
             "tingling": "Symptom_Tingling_Numbness",
             "burning_pain": "Symptom_Burning_Pain", 
@@ -167,22 +188,28 @@ def predict_api():
             val = str(data.get(json_key, ""))
             
             # Numerical fields
-            if feature_name in ["Age", "BMI", "Diabetes_Duration_Years", "HbA1c_Level"]:
+            if feature_name in ["Age", "BMI", "HbA1c_Level"]:
                 input_row[feature_name] = float(val) if (val and val.strip()) else 0.0
             # Categorical fields
             else:
                 le = encoders[feature_name]
+                # Fallback to the first class if the value is unexpected/empty
                 valid_val = val if val in le.classes_ else le.classes_[0]
                 input_row[feature_name] = le.transform([valid_val])[0]
 
+        # Insert the correctly calculated duration
+        input_row["Diabetes_Duration_Years"] = final_duration
+
+        # Convert dictionary to DataFrame using the exact column order expected by the model
         df_input = pd.DataFrame([input_row])[feature_cols]
+        
+        # Run inference
         pred_index = model.predict(df_input)[0]
         risk_label = encoders["target"].inverse_transform([pred_index])[0]
         
         return jsonify({"success": True, "prediction": risk_label})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
-
 
 @app.route("/submit_contact", methods=["POST"])
 def submit_contact():
@@ -193,8 +220,7 @@ def submit_contact():
         subject = data.get('subject')
         message = data.get('message')
         
-        # In a real app, you would save this to a database or send an email.
-        # For your project, printing it neatly to the terminal is perfect!
+        # Print neatly to the terminal for presentation/testing proof
         print("\n" + "="*40)
         print("📩 NEW CONTACT FORM SUBMISSION")
         print("="*40)
@@ -207,7 +233,6 @@ def submit_contact():
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
-
 
 if __name__ == "__main__":
     app.run(debug=True)
