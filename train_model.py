@@ -1,7 +1,7 @@
 # ============================================================
 # train_model.py  –  Clean + retrain version
 # ============================================================
-
+import os
 import pandas as pd
 import numpy as np
 import pickle
@@ -11,7 +11,7 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import classification_report, accuracy_score
 
 print("Loading dataset...")
-df = pd.read_csv("data/diabetes_data.csv")
+df = pd.read_csv("diabetes_data.csv")
 df.drop(columns=["Patient_ID"], inplace=True)
 
 # ── Standardise all categorical values ───────────────────────

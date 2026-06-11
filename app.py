@@ -40,14 +40,21 @@ def scan_clinical_report(text, expected_name):
     age_val = None
 
     # --- Demographics ---
-    age_match = re.search(r"(?:Age|Age/Gender)\s*[:-]?\s*(\d+)", text, re.IGNORECASE)
+    # Primary Check: Looks strictly for "Age" or "Age/Sex" and prevents jumping over random words (like "Page 1")
+    age_match = re.search(r"\bAge\b[^\w\d]*(?:Sex|Gender|Yrs|Years)?[^\w\d]*(\d{1,3})\b", text, re.IGNORECASE)
+    
+    # Fallback Check: Sometimes lab reports just say "58 Yrs" without using the word "Age"
+    if not age_match:
+        age_match = re.search(r"\b(\d{1,3})\s*(?:Yrs|Years|Y/O)\b", text, re.IGNORECASE)
+
     if age_match:
         age_val = int(age_match.group(1))
-        extracted['age'] = str(age_val)
+        if 1 <= age_val <= 120: 
+            extracted['age'] = str(age_val)
 
-    if re.search(r"(?:Sex|Gender|Age/Gender).*?\b(Male|M)\b", text, re.IGNORECASE):
+    if re.search(r"(?:Sex|Gender|Age\s*/\s*Sex|Age\s*/\s*Gender).*?\b(Male|M)\b", text, re.IGNORECASE):
         extracted['gender'] = "Male"
-    elif re.search(r"(?:Sex|Gender|Age/Gender).*?\b(Female|F)\b", text, re.IGNORECASE):
+    elif re.search(r"(?:Sex|Gender|Age\s*/\s*Sex|Age\s*/\s*Gender).*?\b(Female|F)\b", text, re.IGNORECASE):
         extracted['gender'] = "Female"
 
     # --- Laboratory Results ---
